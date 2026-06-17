@@ -78,7 +78,7 @@ export default function App() {
       })
       .catch((e) => {
         console.error("API error:", e);
-        setError("Failed to connect to the backend server.");
+        setError(e.message || "Failed to connect to the backend server.");
       });
   };
 
