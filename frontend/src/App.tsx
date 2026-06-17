@@ -50,8 +50,10 @@
 import React, { useState, useEffect } from "react";
 import { AnalyticsView } from "./components/AnalyticsView";
 
+const API_URL = import.meta.env.VITE_API_URL || "https://trim-backend.vercel.app";
+
 export default function App() {
-  const [links, setLinks] = useState([]);
+  const [links, setLinks] = useState<any[]>([]);
   const [longUrl, setLongUrl] = useState('');
   const [customAlias, setCustomAlias] = useState('');
   const [activeMetrics, setActiveMetrics] = useState(null);
@@ -59,10 +61,25 @@ export default function App() {
   const [loading, setLoading] = useState(false);
 
   const load = () => {
-    fetch("http://localhost:5000/api/links")
-      .then((r) => r.json())
-      .then(setLinks)
-      .catch((e) => console.error("API error:", e));
+    fetch(`${API_URL}/api/links`)
+      .then((r) => {
+        if (!r.ok) {
+          throw new Error(`Failed to load links: ${r.statusText}`);
+        }
+        return r.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setLinks(data);
+        } else {
+          console.error("Expected array from API, got:", data);
+          setError("Received invalid data format from server.");
+        }
+      })
+      .catch((e) => {
+        console.error("API error:", e);
+        setError("Failed to connect to the backend server.");
+      });
   };
 
   useEffect(() => {
@@ -74,19 +91,32 @@ export default function App() {
     setError('');
     setLoading(true);
 
-    fetch("http://localhost:5000/api/links", {
+    fetch(`${API_URL}/api/links`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ longUrl, customAlias })
     })
       .then(async (r) => {
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Redirection configuration conflict.');
-        setLongUrl('');
-        setCustomAlias('');
-        load();
+        let errorMsg = 'Redirection configuration conflict.';
+        try {
+          const d = await r.json();
+          if (!r.ok) {
+            throw new Error(d.error || errorMsg);
+          }
+          setLongUrl('');
+          setCustomAlias('');
+          load();
+        } catch (jsonErr: any) {
+          if (!r.ok) {
+            throw new Error(jsonErr.message || `Server returned error status ${r.status}`);
+          }
+          throw jsonErr;
+        }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        console.error("Create link error:", err);
+        setError(err.message || 'Could not connect to the backend server.');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -303,9 +333,19 @@ export default function App() {
                     </div>
                     <button 
                       onClick={() => {
-                        fetch('http://localhost:5000/api/links/' + l.shortCode + '/analytics')
-                          .then(r => r.json())
-                          .then(setActiveMetrics);
+                        setError('');
+                        fetch(`${API_URL}/api/links/${l.shortCode}/analytics`)
+                          .then((r) => {
+                            if (!r.ok) {
+                              throw new Error(`Failed to load analytics: ${r.statusText}`);
+                            }
+                            return r.json();
+                          })
+                          .then(setActiveMetrics)
+                          .catch((err) => {
+                            console.error("Analytics fetch error:", err);
+                            setError(err.message || "Failed to retrieve analytics.");
+                          });
                       }} 
                       style={{ 
                         cursor: 'pointer',
